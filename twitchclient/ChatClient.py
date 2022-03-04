@@ -7,7 +7,7 @@ from twitchclient.ChatMessage import ChatMessage
 
 
 class ChatClient(ChatEventHandler):
-    def __init__(self, oauth_password: str, logger):
+    def __init__(self, oauth_password: str, nickname: str, twitch_id, logger):
         super().__init__()
         self.running = True
         self.lock = threading.Lock()
@@ -15,6 +15,8 @@ class ChatClient(ChatEventHandler):
         self.bot_logger = logging.getLogger(f"bot-detection")
         self.msg_queue = []
         self.oauth_password = oauth_password
+        self.nickname = nickname
+        self.twitch_id = twitch_id
         self.users = {}
         self.sock = socket.socket()
         self.sock.settimeout(120)   # ping timeout
@@ -87,7 +89,7 @@ class ChatClient(ChatEventHandler):
             pass
         elif cmd[1] == "CLEARCHAT":
             target_user = tags.get("target-user-id")
-            if target_user != settings.USER_ID:
+            if target_user != self.twitch_id:
                 return
 
             ban_duration = tags.get("ban-duration", 0)
@@ -145,7 +147,7 @@ class ChatClient(ChatEventHandler):
             return self.connect()
         self.send_raw('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership', False)
         self.send_raw(f'PASS oauth:{self.oauth_password}', False)
-        self.send_raw(f'NICK {settings.NICKNAME}', False)
+        self.send_raw(f'NICK {self.nickname}', False)
         self.logger.info("Connected to IRC...")
 
     def reconnect(self):
