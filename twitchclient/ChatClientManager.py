@@ -45,8 +45,3 @@ class ChatClientManager:
                 client.remove_channel(channel_name)
                 if len(client.channel_names) == 0:
                     self.clients.remove(client)
-
-    def refresh_loggers(self, startup_logger, bot_detection):
-        for client in self.clients:
-            client.logger = startup_logger
-            client.bot_logger = bot_detection
