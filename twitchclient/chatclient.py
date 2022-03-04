@@ -2,8 +2,8 @@ import logging
 import socket
 import threading
 import time
-from twitchclient.ChatEventHandler import ChatEventHandler
-from twitchclient.ChatMessage import ChatMessage
+from twitchclient.chateventhandler import ChatEventHandler
+from twitchclient.chatmessage import ChatMessage
 
 
 class ChatClient(ChatEventHandler):

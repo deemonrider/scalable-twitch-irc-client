@@ -1,7 +1,7 @@
 import threading
 from typing import List
 
-from twitchclient.ChatClient import ChatClient
+from twitchclient.chatclient import ChatClient
 
 
 class ChatClientManager:

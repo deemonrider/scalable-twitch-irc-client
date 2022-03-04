@@ -1,7 +1,7 @@
 import threading
 from typing import Callable, Any
 
-from twitchclient.ChatMessage import ChatMessage
+from twitchclient.chatmessage import ChatMessage
 
 
 class ChatEventHandler:
