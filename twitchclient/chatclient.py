@@ -2,6 +2,8 @@ import logging
 import socket
 import threading
 import time
+from datetime import timedelta
+
 from twitchclient.chateventhandler import ChatEventHandler
 from twitchclient.chatmessage import ChatMessage
 
@@ -103,12 +105,22 @@ class ChatClient(ChatEventHandler):
             chat_msg = ChatMessage(cmd[0].split("!")[0], tags.get('display-name'), tags.get("user-id"), tags.get("mod"),
                                    tags.get("color"), tags.get("badges"), tags.get("id"), content, channel_name)
             if chat_msg.user_id not in self.users:
-                self.users[chat_msg.user_id] = {}
+                self.users[chat_msg.user_id] = {"antiSpam": 0, "last_active": time.time()}
+
+            if chat_msg.content.startswith("!"):
+                if self.users[chat_msg.user_id]['last_active'] > time.time() - timedelta(seconds=5).seconds:
+                    self.users[chat_msg.user_id]['antiSpam'] += 1
+                else:
+                    if self.users[chat_msg.user_id]['antiSpam'] > 0:
+                        self.users[chat_msg.user_id]['antiSpam'] -= 1
+
             self.users[chat_msg.user_id]['username'] = chat_msg.username
             self.users[chat_msg.user_id]['last_active'] = time.time()
             self.users[chat_msg.user_id]['sub'] = "subscriber" in tags.get("badges", "") or \
                                                   "founder" in tags.get("badges", "")
-            self.call_event_handler("chat_msg", chat_msg)
+
+            if self.users[chat_msg.user_id]['antiSpam'] < 7:
+                self.call_event_handler("chat_msg", chat_msg)
         else:
             self.logger.warning(msg)
 
