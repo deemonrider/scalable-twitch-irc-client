@@ -97,8 +97,11 @@ class ChatClient(ChatEventHandler):
             ban_duration = tags.get("ban-duration", 0)
             if ban_duration == 0:
                 self.logger.warning(f"Permanently banned on channel: {channel_name}")
+                self.remove_channel(channel_name)
             else:
                 self.logger.warning(f"Bot was timeout on channel {channel_name} for {ban_duration} seconds")
+                self.remove_channel(channel_name)
+
         elif cmd[1].isdigit():
             self.logger.info(msg)
         elif cmd[1] == "PRIVMSG":
