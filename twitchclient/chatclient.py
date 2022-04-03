@@ -34,7 +34,7 @@ class ChatClient(ChatEventHandler):
         self.channel_names = []
         self.channels = {}
         self.last_ping = time.time()
-        self.chat_mode = ChatModes.PUBLIC # todo: move the on notice to this module
+        self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
         threading.Thread(target=self._handle_recv).start()
         threading.Thread(target=self._ping).start()
 
@@ -96,7 +96,7 @@ class ChatClient(ChatEventHandler):
             self.call_event_handler("join", channel_name, cmd[0].split("!")[0])
         elif cmd[1] == "NOTICE":
             self.call_event_handler("notice", content)
-        elif cmd[1]  == "ROOMSTATE":
+        elif cmd[1] == "ROOMSTATE":
             # pass
             print("ROOMSTATE")
             print(channel_name)
@@ -210,7 +210,7 @@ class ChatClient(ChatEventHandler):
     def add_channel(self, channel_name: str):
         with self.lock:
             self.channel_names.append(channel_name)
-            self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC}
+            # self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC}
             self.logger.info(f"Trying to join #{channel_name}")
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 
@@ -218,7 +218,7 @@ class ChatClient(ChatEventHandler):
         with self.lock:
             if channel_name in self.channel_names:
                 self.channel_names.remove(channel_name)
-                self.channels.pop(channel_name)
+                # self.channels.pop(channel_name)
                 self.send_raw(f"PART #{channel_name}", lock=False)
 
     def send_raw(self, msg: str, lock=True):
