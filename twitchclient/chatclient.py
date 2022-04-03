@@ -32,7 +32,7 @@ class ChatClient(ChatEventHandler):
         self.connect()
         self.reconnect_count = 0    # prevent multiple reconnects at the same time
         self.channel_names = []
-        self.channels = {}
+        # self.channels = {}
         self.last_ping = time.time()
         self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
         threading.Thread(target=self._handle_recv).start()
