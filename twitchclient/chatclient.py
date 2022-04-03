@@ -8,6 +8,12 @@ from twitchclient.chateventhandler import ChatEventHandler
 from twitchclient.chatmessage import ChatMessage
 
 
+class ChatModes:
+    PUBLIC = "PUBLIC"
+    FOLLOWER = "FOLLOWER"
+    SUBSCRIBER = "SUBSCRIBER"
+
+
 class ChatClient(ChatEventHandler):
     def __init__(self, oauth_password: str, nickname: str, twitch_id, logger):
         super().__init__()
@@ -26,6 +32,7 @@ class ChatClient(ChatEventHandler):
         self.reconnect_count = 0    # prevent multiple reconnects at the same time
         self.channel_names = []
         self.last_ping = time.time()
+        self.chat_mode = ChatModes.PUBLIC # todo: move the on notice to this module
         threading.Thread(target=self._handle_recv).start()
         threading.Thread(target=self._ping).start()
 
