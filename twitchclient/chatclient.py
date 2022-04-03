@@ -32,9 +32,9 @@ class ChatClient(ChatEventHandler):
         self.connect()
         self.reconnect_count = 0    # prevent multiple reconnects at the same time
         self.channel_names = []
-        # self.channels = {}
+        self.channels = {}
         self.last_ping = time.time()
-        self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
+        self.chat_mode = ChatModes.PUBLIC # todo: move the on notice to this module
         threading.Thread(target=self._handle_recv).start()
         threading.Thread(target=self._ping).start()
 
@@ -96,20 +96,16 @@ class ChatClient(ChatEventHandler):
             self.call_event_handler("join", channel_name, cmd[0].split("!")[0])
         elif cmd[1] == "NOTICE":
             self.call_event_handler("notice", content)
-        elif cmd[1] == "ROOMSTATE":
-            # pass
-            print("ROOMSTATE")
-            print(channel_name)
-            # if tags.get('subs-only') == 1:
-            #     self.channels[channel_name]["chat_mode"] = ChatModes.SUBSCRIBER
-            # elif tags.get('followers-only') == 1:
-            #     self.channels[channel_name]["chat_mode"] = ChatModes.FOLLOWER
-            # elif tags.get('emote-only') == 1:
-            #     self.channels[channel_name]["chat_mode"] = ChatModes.EMOTE
-            # else:
-            #     self.channels[channel_name]["chat_mode"] = ChatModes.PUBLIC
-
-        elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE" or cmd[1] == "USERSTATE" or cmd[1]:
+        elif cmd[1]== "ROOMSTATE":
+            if tags.get('subs-only') == "1":
+                self.channels[channel_name]["chat_mode"] = ChatModes.SUBSCRIBER
+            elif tags.get('emote-only') == "1":
+                self.channels[channel_name]["chat_mode"] = ChatModes.EMOTE
+            elif tags.get('followers-only') == "-1":
+                self.channels[channel_name]["chat_mode"] = ChatModes.PUBLIC
+            else:
+                self.channels[channel_name]["chat_mode"] = ChatModes.FOLLOWER
+        elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE" or cmd[1] == "USERSTATE":
             pass
         elif cmd[1] == "CLEARCHAT":
             target_user = tags.get("target-user-id")
@@ -210,7 +206,7 @@ class ChatClient(ChatEventHandler):
     def add_channel(self, channel_name: str):
         with self.lock:
             self.channel_names.append(channel_name)
-            # self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC}
+            self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC}
             self.logger.info(f"Trying to join #{channel_name}")
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 
@@ -218,7 +214,7 @@ class ChatClient(ChatEventHandler):
         with self.lock:
             if channel_name in self.channel_names:
                 self.channel_names.remove(channel_name)
-                # self.channels.pop(channel_name)
+                self.channels.pop(channel_name)
                 self.send_raw(f"PART #{channel_name}", lock=False)
 
     def send_raw(self, msg: str, lock=True):
