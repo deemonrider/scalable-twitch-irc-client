@@ -96,7 +96,7 @@ class ChatClient(ChatEventHandler):
             self.call_event_handler("join", channel_name, cmd[0].split("!")[0])
         elif cmd[1] == "NOTICE":
             self.call_event_handler("notice", content)
-        elif cmd[1]== "ROOMSTATE":
+        elif cmd[1] == "ROOMSTATE":
             if tags.get('subs-only') == "1":
                 self.channels[channel_name]["chat_mode"] = ChatModes.SUBSCRIBER
             elif tags.get('emote-only') == "1":
@@ -137,6 +137,7 @@ class ChatClient(ChatEventHandler):
                     if self.users[chat_msg.user_id]['antiSpam'] > 0:
                         self.users[chat_msg.user_id]['antiSpam'] -= 1
 
+            self.users[chat_msg.user_id]['channel_name'] = channel_name
             self.users[chat_msg.user_id]['username'] = chat_msg.username
             self.users[chat_msg.user_id]['last_active'] = time.time()
             self.users[chat_msg.user_id]['sub'] = "subscriber" in tags.get("badges", "") or \
