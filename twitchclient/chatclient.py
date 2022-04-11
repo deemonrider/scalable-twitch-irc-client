@@ -94,8 +94,6 @@ class ChatClient(ChatEventHandler):
 
         if cmd[1] == "JOIN":
             self.call_event_handler("join", channel_name, cmd[0].split("!")[0])
-        elif cmd[1] == "WHISPER":
-            pass
         elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE" or cmd[1] == "USERSTATE":
             pass
         elif cmd[1] == "NOTICE":
