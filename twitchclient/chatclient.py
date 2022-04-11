@@ -94,6 +94,10 @@ class ChatClient(ChatEventHandler):
 
         if cmd[1] == "JOIN":
             self.call_event_handler("join", channel_name, cmd[0].split("!")[0])
+        elif cmd[1] == "WHISPER":
+            pass
+        elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE" or cmd[1] == "USERSTATE":
+            pass
         elif cmd[1] == "NOTICE":
             self.call_event_handler("notice", content)
         elif cmd[1] == "ROOMSTATE":
@@ -108,9 +112,6 @@ class ChatClient(ChatEventHandler):
                     self.channels[channel_name]["chat_mode"] = ChatModes.FOLLOWER
             except KeyError:
                 pass
-
-        elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE" or cmd[1] == "USERSTATE":
-            pass
         elif cmd[1] == "CLEARCHAT":
             target_user = tags.get("target-user-id")
             if target_user != self.twitch_id:
@@ -123,9 +124,6 @@ class ChatClient(ChatEventHandler):
             else:
                 self.logger.warning(f"Bot was timeout on channel {channel_name} for {ban_duration} seconds")
                 self.remove_channel(channel_name)
-
-        elif cmd[1].isdigit():
-            self.logger.info(msg)
         elif cmd[1] == "PRIVMSG":
             chat_msg = ChatMessage(cmd[0].split("!")[0], tags.get('display-name'), tags.get("user-id"), tags.get("mod"),
                                    tags.get("color"), tags.get("badges"), tags.get("id"), content, channel_name)
@@ -149,6 +147,8 @@ class ChatClient(ChatEventHandler):
 
             if self.users[chat_msg.user_id]['antiSpam'] < 7:
                 self.call_event_handler("chat_msg", chat_msg)
+        elif cmd[1].isdigit():
+            self.logger.info(msg)
         else:
             self.logger.warning(msg)
 
