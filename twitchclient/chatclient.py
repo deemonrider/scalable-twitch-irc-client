@@ -97,14 +97,18 @@ class ChatClient(ChatEventHandler):
         elif cmd[1] == "NOTICE":
             self.call_event_handler("notice", content)
         elif cmd[1] == "ROOMSTATE":
-            if tags.get('subs-only') == "1":
-                self.channels[channel_name]["chat_mode"] = ChatModes.SUBSCRIBER
-            elif tags.get('emote-only') == "1":
-                self.channels[channel_name]["chat_mode"] = ChatModes.EMOTE
-            elif tags.get('followers-only') == "-1":
-                self.channels[channel_name]["chat_mode"] = ChatModes.PUBLIC
-            else:
-                self.channels[channel_name]["chat_mode"] = ChatModes.FOLLOWER
+            try:
+                if tags.get('subs-only') == "1":
+                    self.channels[channel_name]["chat_mode"] = ChatModes.SUBSCRIBER
+                elif tags.get('emote-only') == "1":
+                    self.channels[channel_name]["chat_mode"] = ChatModes.EMOTE
+                elif tags.get('followers-only') == "-1":
+                    self.channels[channel_name]["chat_mode"] = ChatModes.PUBLIC
+                else:
+                    self.channels[channel_name]["chat_mode"] = ChatModes.FOLLOWER
+            except KeyError:
+                pass
+
         elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE" or cmd[1] == "USERSTATE":
             pass
         elif cmd[1] == "CLEARCHAT":

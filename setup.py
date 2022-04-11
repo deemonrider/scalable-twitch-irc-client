@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='ScalableTwitchIrcClient',
-    version='0.1.8',
+    version='0.1.9',
     url='https://github.com/deemonrider/scalable-twitch-irc-client.git',
     author='DeemonRider',
     author_email='',
