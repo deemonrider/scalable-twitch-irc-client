@@ -22,7 +22,7 @@ def main():
     session = requests.Session()
 
     # move this into a loop to join multiple channels
-    c, is_new_socket = client_manager.add_channel(NICKNAME)
+    c, is_new_socket = client_manager.add_channel(NICKNAME, avg_viewer=42)
     if is_new_socket:
         statuscheck.init(c, session)
         cmds.init(c, session)
