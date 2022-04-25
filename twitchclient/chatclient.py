@@ -50,7 +50,7 @@ class ChatClient(ChatEventHandler):
                 self.logger.warning("NO PONG RECEIVED, RECONNECTING!")
                 self.reconnect()
 
-    def rejoin(self, channel_name, timeout):
+    def rejoin_after_timeout(self, channel_name, timeout):
         time.sleep(timeout + 1)
         self.add_channel(channel_name)
 
@@ -126,7 +126,7 @@ class ChatClient(ChatEventHandler):
             else:
                 self.logger.warning(f"Bot was timeout on channel {channel_name} for {ban_duration} seconds")
                 self.remove_channel(channel_name)
-                threading.Thread(target=self.rejoin, args=(channel_name, ban_duration)).start()
+                threading.Thread(target=self.rejoin_after_timeout, args=(channel_name, ban_duration)).start()
         elif cmd[1] == "PRIVMSG":
             chat_msg = ChatMessage(cmd[0].split("!")[0], tags.get('display-name'), tags.get("user-id"), tags.get("mod"),
                                    tags.get("color"), tags.get("badges"), tags.get("id"), content, channel_name)
