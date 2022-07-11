@@ -130,17 +130,19 @@ class ChatClient(ChatEventHandler):
         elif cmd[1] == "PRIVMSG":
             chat_msg = ChatMessage(cmd[0].split("!")[0], tags.get('display-name'), tags.get("user-id"), tags.get("mod"),
                                    tags.get("color"), tags.get("badges"), tags.get("id"), content, channel_name)
+
             if chat_msg.user_id not in self.users:
                 self.users[chat_msg.user_id] = {"antiSpam": 0, "last_active": time.time()}
 
             if chat_msg.content.startswith("!"):
                 if self.users[chat_msg.user_id]['last_active'] > time.time() - timedelta(seconds=5).seconds:
                     self.users[chat_msg.user_id]['antiSpam'] += 1
-                elif self.users[chat_msg.user_id]['last_active'] < time.time() - timedelta(seconds=360).seconds:
-                    self.users[chat_msg.user_id]['antiSpam'] = 0
                 else:
                     if self.users[chat_msg.user_id]['antiSpam'] > 0:
                         self.users[chat_msg.user_id]['antiSpam'] -= 1
+
+            if self.users[chat_msg.user_id]['last_active'] > time.time() - timedelta(seconds=60).seconds:
+                self.users[chat_msg.user_id]['antiSpam'] = 0
 
             self.users[chat_msg.user_id]['channel_name'] = channel_name
             self.users[chat_msg.user_id]['username'] = chat_msg.username
@@ -148,7 +150,7 @@ class ChatClient(ChatEventHandler):
             self.users[chat_msg.user_id]['sub'] = "subscriber" in tags.get("badges", "") or \
                                                   "founder" in tags.get("badges", "")
 
-            if self.users[chat_msg.user_id]['antiSpam'] < 7:
+            if self.users[chat_msg.user_id]['antiSpam'] < 5:
                 self.call_event_handler("chat_msg", chat_msg)
         elif cmd[1].isdigit():
             self.logger.info(msg)
