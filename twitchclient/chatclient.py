@@ -51,7 +51,7 @@ class ChatClient(ChatEventHandler):
                 self.reconnect()
 
     def rejoin_after_timeout(self, channel_name: str, timeout: int):
-        time.sleep(timeout + 1)
+        time.sleep(timeout + 3)
         self.add_channel(channel_name)
 
     def _handle_msg(self, msg: str):
@@ -222,7 +222,7 @@ class ChatClient(ChatEventHandler):
 
     def remove_channel(self, channel_name: str):
         with self.lock:
-            if channel_name in self.channel_names:
+            if channel_name in self.channel_names and channel_name in self.channels:
                 self.channel_names.remove(channel_name)
                 self.channels.pop(channel_name)
                 self.send_raw(f"PART #{channel_name}", lock=False)

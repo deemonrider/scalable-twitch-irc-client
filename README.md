@@ -3,6 +3,7 @@
 ### How to install?
 
     pip3 install git+https://github.com/deemonrider/scalable-twitch-irc-client
+    sudo pip3 install git+https://github.com/deemonrider/scalable-twitch-irc-client
 
 ### How to use?
 
