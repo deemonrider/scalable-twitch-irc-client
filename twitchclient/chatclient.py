@@ -163,9 +163,16 @@ class ChatClient(ChatEventHandler):
             while self.running:
                 try:
                     data = self.sock.recv(1)
-                except (ConnectionAbortedError, ConnectionResetError, OSError):
-                    self.logger.warning("Twitch IRC: Connection closed by client.")
+                except ConnectionAbortedError:
+                    self.logger.warning("Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
                     break
+                except OSError:
+                    self.logger.warning("Twitch IRC: Connection closed by client due to OSError.")
+                    break
+                except ConnectionResetError:
+                    self.logger.warning("Twitch IRC: Connection closed by client due to ConnectionResetError.")
+                    break
+
                 if not data:
                     self.logger.warning("Twitch IRC: Connection closed by server.")
                     break
