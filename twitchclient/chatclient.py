@@ -40,12 +40,11 @@ class ChatClient(ChatEventHandler):
 
     def cleanup(self):
         while self.running:
-            time.sleep(5)
-            # time.sleep(60 * 5)
+            time.sleep(60 * 5)  # check all 5 minutes
+
+            time_before = (time.time() - timedelta(minutes=60).seconds)  # remove users that haven't been seen in 1 hour
             for user in self.users.copy():
-                print(user)
-                if self.users[user]["last_active"] > (time.time() - timedelta(minutes=1).seconds):
-                    print("removing: " + user)
+                if self.users[user]["last_active"] < time_before:
                     self.users.pop(user)
 
     def get_logger(self):
