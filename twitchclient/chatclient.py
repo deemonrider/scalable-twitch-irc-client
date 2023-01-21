@@ -42,7 +42,7 @@ class ChatClient(ChatEventHandler):
         while self.running:
             time.sleep(5)
             # time.sleep(60 * 5)
-            for user in self.users:
+            for user in self.users.copy():
                 print(user)
                 if self.users[user]["last_active"] > (time.time() - timedelta(minutes=1).seconds):
                     print("removing: " + user)
