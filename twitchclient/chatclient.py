@@ -22,7 +22,6 @@ class ChatClient(ChatEventHandler):
         self.lock = threading.Lock()
         self.logger = logger
         self.bot_logger = logging.getLogger(f"bot-detection")
-        self.msg_queue = []
         self.oauth_password = oauth_password
         self.nickname = nickname
         self.twitch_id = twitch_id
@@ -34,9 +33,20 @@ class ChatClient(ChatEventHandler):
         self.channel_names = []
         self.channels = {}
         self.last_ping = time.time()
-        self.chat_mode = ChatModes.PUBLIC # todo: move the on notice to this module
+        self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
         threading.Thread(target=self._handle_recv).start()
         threading.Thread(target=self._ping).start()
+        threading.Thread(target=self.cleanup).start()
+
+    def cleanup(self):
+        while self.running:
+            time.sleep(5)
+            # time.sleep(60 * 5)
+            for user in self.users:
+                print(user)
+                if self.users[user]["last_active"] > (time.time() - timedelta(minutes=1).seconds):
+                    print("removing: " + user)
+                    self.users.pop(user)
 
     def get_logger(self):
         return self.logger
