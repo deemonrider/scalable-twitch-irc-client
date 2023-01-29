@@ -2,7 +2,7 @@ import logging
 import socket
 import threading
 import time
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 from twitchclient.chateventhandler import ChatEventHandler
 from twitchclient.chatmessage import ChatMessage
@@ -59,7 +59,7 @@ class ChatClient(ChatEventHandler):
             self.send_raw("PING :tmi.twitch.tv")
             time.sleep(2)
             if time.time() - self.last_ping > 60 * 2:
-                self.logger.warning(f"NO PONG RECEIVED, LAST PING: {self.last_ping.strftime('%d-%m-%y')}!")
+                self.logger.warning(f"NO PONG RECEIVED, LAST PING: {datetime.fromtimestamp(self.last_ping)}!")
                 if time.time() - self.last_ping > 60 * 5:
                     self.logger.warning(f"NO PONG RECEIVED FOR 5 MINUTES, RECONNECTING!")
                     self.reconnect() #  this could may cause a reconnect loop when it tries to reconnect when the bot is right now trying to connect
