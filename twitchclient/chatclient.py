@@ -28,24 +28,27 @@ class ChatClient(ChatEventHandler):
         self.users = {}
         self.sock = socket.socket()
         self.sock.settimeout(120)   # ping timeout
-        self.connect()
         self.reconnect_count = 0    # prevent multiple reconnects at the same time
         self.channel_names = []
         self.channels = {}
         self.last_ping = time.time()
         self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
+        self.connect()
         threading.Thread(target=self._handle_recv).start()
         threading.Thread(target=self._ping).start()
         threading.Thread(target=self.cleanup).start()
 
     def cleanup(self):
+        i = 0
         while self.running:
-            time.sleep(60 * 5)  # check all 5 minutes
-
-            time_before = (time.time() - timedelta(minutes=60).seconds)  # remove users that haven't been seen in 1 hour
-            for user in self.users.copy():
-                if self.users[user]["last_active"] < time_before:
-                    self.users.pop(user)
+            time.sleep(60)  
+            i += 1
+            if i == 5: # all 5 minutes
+                i = 0
+                time_before = (time.time() - timedelta(minutes=60).seconds)  # remove users that haven't been seen in 1 hour
+                for user in self.users.copy():
+                    if self.users[user]["last_active"] < time_before:
+                        self.users.pop(user)
 
     def get_logger(self):
         return self.logger
@@ -172,14 +175,14 @@ class ChatClient(ChatEventHandler):
             while self.running:
                 try:
                     data = self.sock.recv(1)
+                except ConnectionResetError:
+                    self.logger.warning("Twitch IRC: Connection closed by client due to ConnectionResetError.")
+                    break
                 except ConnectionAbortedError:
                     self.logger.warning("Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
                     break
                 except OSError:
                     self.logger.warning("Twitch IRC: Connection closed by client due to OSError.")
-                    break
-                except ConnectionResetError:
-                    self.logger.warning("Twitch IRC: Connection closed by client due to ConnectionResetError.")
                     break
 
                 if not data:
@@ -242,7 +245,9 @@ class ChatClient(ChatEventHandler):
                 self.channel_names.remove(channel_name)
                 self.channels.pop(channel_name)
                 self.send_raw(f"PART #{channel_name}", lock=False)
-
+                return True # success
+            return False # channel not in this cluster
+        
     def send_raw(self, msg: str, lock=True):
         if lock:
             self.lock.acquire()
@@ -269,7 +274,7 @@ class ChatClient(ChatEventHandler):
         self.sock.close()
 
     def exit(self):
-        self.logger.info("exiting socket")
+        self.logger.info("Exiting socket")
         self.running = False
-        time.sleep(3)
+        time.sleep(60 * 2) # Wait 2 minutes until the ping and cleanup thread is stopped
         self.close()
