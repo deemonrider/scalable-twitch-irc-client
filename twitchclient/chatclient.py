@@ -280,5 +280,5 @@ class ChatClient(ChatEventHandler):
     def exit(self):
         self.logger.info("Exiting socket")
         self.running = False
-        time.sleep(60 * 2) # Wait 2 minutes until the ping and cleanup thread is stopped
+        time.sleep(3)
         self.close()
