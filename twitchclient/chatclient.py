@@ -64,7 +64,7 @@ class ChatClient(ChatEventHandler):
                     self.logger.warning(f"NO PONG RECEIVED FOR 5 MINUTES, RECONNECTING!")
                     self.reconnect() #  this could may cause a reconnect loop when it tries to reconnect when the bot is right now trying to connect
             else:
-                self.logger.warning(f"PONG SUCCESS!")
+                self.logger.info(f"PONG SUCCESS!")
 
     def rejoin_after_timeout(self, channel_name: str, timeout: int):
         time.sleep(timeout + 3)
