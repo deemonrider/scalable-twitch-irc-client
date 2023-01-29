@@ -60,7 +60,7 @@ class ChatClient(ChatEventHandler):
             time.sleep(2)
             if time.time() - self.last_ping > 60 * 2:
                 self.logger.warning("NO PONG RECEIVED, RECONNECTING!")
-                self.reconnect()
+                # self.reconnect() # disable this for now as this may cause a reconnect loop
 
     def rejoin_after_timeout(self, channel_name: str, timeout: int):
         time.sleep(timeout + 3)
