@@ -17,6 +17,12 @@ class ChatClientManager:
         self.channel_size_client_dict = {}
         self.channel_size_dict = {}
 
+    def shutdown(self):
+        for client in self.clients:
+            for channel_name in self.clients.channel_names:
+                client.remove_channel(channel_name)
+        sys.exit(0)
+
     def _create_client(self):
         client = ChatClient(
             oauth_password=self.oauth_password, nickname=self.nickname, twitch_id=self.twitch_id, logger=self.logger
