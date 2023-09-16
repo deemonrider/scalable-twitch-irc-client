@@ -236,10 +236,10 @@ class ChatClient(ChatEventHandler):
             self.logger.info(f"Trying to re-join #{channel_name}")
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 
-    def add_channel(self, channel_name: str):
+    def add_channel(self, channel_name: str, language: str):
         with self.lock:
             self.channel_names.append(channel_name)
-            self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC}
+            self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC, "language": language}
             self.logger.info(f"Trying to join #{channel_name}")
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 

@@ -24,7 +24,7 @@ class ChatClientManager:
         self.clients.append(client)
         return client
 
-    def add_channel(self, channel_name: str, avg_viewer: int) -> Tuple[ChatClient, bool]:
+    def add_channel(self, channel_name: str, language: str, avg_viewer: int) -> Tuple[ChatClient, bool]:
         with self.lock:
             target_client = None
             is_new = True
@@ -45,7 +45,7 @@ class ChatClientManager:
                 self.channel_size_client_dict[target_client] += avg_viewer
 
             self.channel_size_dict[channel_name] = avg_viewer
-            target_client.add_channel(channel_name)
+            target_client.add_channel(channel_name, language)
 
             return target_client, is_new
 
