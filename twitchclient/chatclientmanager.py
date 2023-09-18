@@ -1,3 +1,4 @@
+import sys
 import threading
 from typing import List
 from typing import Tuple
@@ -19,7 +20,7 @@ class ChatClientManager:
 
     def shutdown(self):
         for client in self.clients:
-            for channel_name in self.clients.channel_names:
+            for channel_name in client.channel_names:
                 client.remove_channel(channel_name)
         sys.exit(0)
 
