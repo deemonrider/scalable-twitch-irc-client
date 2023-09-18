@@ -27,8 +27,8 @@ class ChatClient(ChatEventHandler):
         self.twitch_id = twitch_id
         self.users = {}
         self.sock = socket.socket()
-        self.sock.settimeout(120)   # ping timeout
-        self.reconnect_count = 0    # prevent multiple reconnects at the same time
+        self.sock.settimeout(120)  # ping timeout
+        self.reconnect_count = 0  # prevent multiple reconnects at the same time
         self.channel_names = []
         self.channels = {}
         self.last_ping = time.time()
@@ -41,9 +41,9 @@ class ChatClient(ChatEventHandler):
     def cleanup(self):
         i = 0
         while self.running:
-            time.sleep(60)  
+            time.sleep(60)
             i += 1
-            if i == 5: # all 5 minutes
+            if i == 5:  # all 5 minutes
                 i = 0
                 time_before = (time.time() - timedelta(minutes=60).seconds)  # remove users that haven't been seen in 1 hour
                 for user in self.users.copy():
@@ -55,20 +55,25 @@ class ChatClient(ChatEventHandler):
 
     def _ping(self):
         while self.running:
-            time.sleep(60)
+            for i in range(60):  # 60 seconds
+                if not self.running:  # Check if the bot is still running
+                    return
+                time.sleep(1)  # Sleep for 1 second
+
             self.send_raw("PING :tmi.twitch.tv")
             time.sleep(2)
             if time.time() - self.last_ping > 60 * 2:
                 self.logger.warning(f"NO PONG RECEIVED, LAST PING: {datetime.fromtimestamp(self.last_ping)}!")
                 if time.time() - self.last_ping > 60 * 5:
                     self.logger.warning(f"NO PONG RECEIVED FOR 5 MINUTES, RECONNECTING!")
-                    self.reconnect() #  this could may cause a reconnect loop when it tries to reconnect when the bot is right now trying to connect
+                    self.reconnect()  # this could may cause a reconnect loop when it tries to reconnect when the bot is right now trying to connect
             else:
                 self.logger.info(f"PONG SUCCESS!")
 
     def rejoin_after_timeout(self, channel_name: str, timeout: int):
         time.sleep(timeout + 3)
-        self.add_channel(channel_name)
+        language = self.channels[channel_name]["language"]
+        self.add_channel(channel_name, language)
 
     def _handle_msg(self, msg: str):
         if msg == "PING :tmi.twitch.tv":
@@ -249,10 +254,13 @@ class ChatClient(ChatEventHandler):
                 self.channel_names.remove(channel_name)
                 self.channels.pop(channel_name)
                 self.send_raw(f"PART #{channel_name}", lock=False)
-                return True # success
-            return False # channel not in this cluster
-        
+                return True  # success
+            return False  # channel not in this cluster
+
     def send_raw(self, msg: str, lock=True):
+        if not self.running:
+            return
+
         if lock:
             self.lock.acquire()
         try:
@@ -260,7 +268,7 @@ class ChatClient(ChatEventHandler):
         except OSError as e:
             self.logger.warning("Twitch IRC: Connection closed while sending.")
             self.logger.error(e)
-            threading.Thread(target=self.reconnect).start()     # make sure the current reconnect call releases the lock
+            threading.Thread(target=self.reconnect).start()  # make sure the current reconnect call releases the lock
         if lock:
             self.lock.release()
 
@@ -281,4 +289,12 @@ class ChatClient(ChatEventHandler):
         self.logger.info("Exiting socket")
         self.running = False
         time.sleep(3)
-        self.close()
+
+        with self.lock:  # Lock here, in case other threads are using the socket
+            if self.sock:  # Check if sock exists before closing
+                try:
+                    self.sock.shutdown(socket.SHUT_RDWR)  # Shutdown the socket before closing
+                except OSError as e:
+                    self.logger.error(f"Error during socket shutdown: {e}")
+                self.close()
+        self.logger.info("Exiting the bot gracefully.")
