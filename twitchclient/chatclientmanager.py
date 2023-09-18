@@ -1,4 +1,3 @@
-import sys
 import threading
 from typing import List
 from typing import Tuple
@@ -22,6 +21,7 @@ class ChatClientManager:
         for client in self.clients:
             for channel_name in client.channel_names:
                 client.remove_channel(channel_name)
+            client.exit()
 
     def _create_client(self):
         client = ChatClient(
