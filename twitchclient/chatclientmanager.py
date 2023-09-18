@@ -22,7 +22,6 @@ class ChatClientManager:
         for client in self.clients:
             for channel_name in client.channel_names:
                 client.remove_channel(channel_name)
-        sys.exit(0)
 
     def _create_client(self):
         client = ChatClient(
