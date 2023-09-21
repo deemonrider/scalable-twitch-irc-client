@@ -277,7 +277,7 @@ class ChatClient(ChatEventHandler):
         except OSError as e:
             self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed while sending.")
             self.logger.error(e)
-            # threading.Thread(target=self.reconnect).start()  # make sure the current reconnect call releases the lock
+            threading.Thread(target=self.reconnect).start()  # make sure the current reconnect call releases the lock
         if lock:
             self.lock.release()
 
