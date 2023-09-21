@@ -7,6 +7,7 @@ from twitchclient.chatclient import ChatClient
 class ChatClientManager:
     def __init__(self, oauth_password: str, nickname: str, twitch_id, logger, max_cluster_size=25, max_viewer_per_cluster=250):
         self.clients = []   # type: List[ChatClient]
+        self.clients_created = 0
         self.lock = threading.Lock()
         self.oauth_password = oauth_password
         self.nickname = nickname
@@ -24,8 +25,9 @@ class ChatClientManager:
             client.exit()
 
     def _create_client(self):
+        self.clients_created += 1
         client = ChatClient(
-            oauth_password=self.oauth_password, nickname=self.nickname, twitch_id=self.twitch_id, logger=self.logger
+            oauth_password=self.oauth_password, nickname=self.nickname, twitch_id=self.twitch_id, logger=self.logger, chat_client_id=self.clients_created
         )
         self.clients.append(client)
         return client

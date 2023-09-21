@@ -16,8 +16,9 @@ class ChatModes:
 
 
 class ChatClient(ChatEventHandler):
-    def __init__(self, oauth_password: str, nickname: str, twitch_id, logger):
+    def __init__(self, oauth_password: str, nickname: str, twitch_id, logger, chat_client_id=-1):
         super().__init__()
+        self.chat_client_id = chat_client_id
         self.running = True
         self.lock = threading.Lock()
         self.logger = logger
@@ -29,6 +30,7 @@ class ChatClient(ChatEventHandler):
         self.sock = socket.socket()
         self.sock.settimeout(120)  # ping timeout
         self.reconnect_count = 0  # prevent multiple reconnects at the same time
+        self.last_connection_attempt = datetime.utcnow() - timedelta(minutes=30)
         self.channel_names = []
         self.channels = {}
         self.last_ping = time.time()
@@ -41,14 +43,15 @@ class ChatClient(ChatEventHandler):
     def cleanup(self):
         i = 0
         while self.running:
-            time.sleep(60)
+            time.sleep(1)
             i += 1
-            if i == 5:  # all 5 minutes
+            if i == 5 * 60:  # all 5 minutes
                 i = 0
                 time_before = (time.time() - timedelta(minutes=60).seconds)  # remove users that haven't been seen in 1 hour
                 for user in self.users.copy():
                     if self.users[user]["last_active"] < time_before:
                         self.users.pop(user)
+        self.logger.info(f"{self.chat_client_id}) Exiting cleanup thread gracefully.")
 
     def get_logger(self):
         return self.logger
@@ -63,12 +66,13 @@ class ChatClient(ChatEventHandler):
             self.send_raw("PING :tmi.twitch.tv")
             time.sleep(2)
             if time.time() - self.last_ping > 60 * 2:
-                self.logger.warning(f"NO PONG RECEIVED, LAST PING: {datetime.fromtimestamp(self.last_ping)}!")
+                self.logger.warning(f"{self.chat_client_id}) NO PONG RECEIVED, LAST PING: {datetime.fromtimestamp(self.last_ping)}!")
                 if time.time() - self.last_ping > 60 * 5:
-                    self.logger.warning(f"NO PONG RECEIVED FOR 5 MINUTES, RECONNECTING!")
-                    self.reconnect()  # this could may cause a reconnect loop when it tries to reconnect when the bot is right now trying to connect
+                    self.logger.warning(f"{self.chat_client_id}) NO PONG RECEIVED FOR 5 MINUTES, RECONNECTING!")
+                    self.reconnect()
             else:
-                self.logger.info(f"PONG SUCCESS!")
+                self.logger.info(f"{self.chat_client_id}) PONG success")
+        self.logger.info(f"{self.chat_client_id}) Exiting ping thread gracefully.")
 
     def rejoin_after_timeout(self, channel_name: str, timeout: int):
         time.sleep(timeout + 3)
@@ -90,7 +94,7 @@ class ChatClient(ChatEventHandler):
         try:
             tags_s, cmd_s, content = [x.strip() for x in msg.split(" :", 2)]
         except ValueError:
-            self.logger.error(f"MSG: {msg}")
+            self.logger.error(f"{self.chat_client_id}) MSG: {msg}")
             return
 
         # parse tags
@@ -104,7 +108,7 @@ class ChatClient(ChatEventHandler):
         try:
             cmd = cmd_s.split(" ")
         except ValueError:
-            self.logger.error("can't unpack cmd_s")
+            self.logger.error(f"{self.chat_client_id}) can't unpack cmd_s")
             self.logger.error(cmd_s)
             return
 
@@ -114,7 +118,7 @@ class ChatClient(ChatEventHandler):
             channel_name = None
 
         if len(cmd) < 2:
-            self.logger.error("len(cmd) < 2")
+            self.logger.error(f"{self.chat_client_id}) len(cmd) < 2")
             return
 
         if cmd[1] == "JOIN":
@@ -142,10 +146,10 @@ class ChatClient(ChatEventHandler):
 
             ban_duration = tags.get("ban-duration", 0)
             if ban_duration == 0:
-                self.logger.warning(f"Permanently banned on channel: {channel_name}")
+                self.logger.warning(f"{self.chat_client_id}) Permanently banned on channel: {channel_name}")
                 self.remove_channel(channel_name)
             else:
-                self.logger.warning(f"Bot was timeout on channel {channel_name} for {ban_duration} seconds")
+                self.logger.warning(f"{self.chat_client_id}) Bot was timeout on channel {channel_name} for {ban_duration} seconds")
                 self.remove_channel(channel_name)
                 threading.Thread(target=self.rejoin_after_timeout, args=(channel_name, int(ban_duration))).start()
         elif cmd[1] == "PRIVMSG":
@@ -185,17 +189,17 @@ class ChatClient(ChatEventHandler):
                 try:
                     data = self.sock.recv(1)
                 except ConnectionResetError:
-                    self.logger.warning("Twitch IRC: Connection closed by client due to ConnectionResetError.")
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionResetError.")
                     break
                 except ConnectionAbortedError:
-                    self.logger.warning("Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
                     break
                 except OSError:
-                    self.logger.warning("Twitch IRC: Connection closed by client due to OSError.")
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError.")
                     break
 
                 if not data:
-                    self.logger.warning("Twitch IRC: Connection closed by server.")
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by server.")
                     break
                 if data == b'\n':
                     self._handle_msg(msg.decode().strip())
@@ -210,27 +214,32 @@ class ChatClient(ChatEventHandler):
         self.sock.settimeout(120)  # ping timeout
 
     def connect(self):
-        self.logger.info("Connecting to Twitch IRC...")
+        self.logger.info(f"{self.chat_client_id}) Connecting to Twitch IRC...")
         try:
             self.sock.connect(('irc.chat.twitch.tv', 6667))
         except (TimeoutError, socket.timeout, OSError):
-            self.logger.warning('Connection to Twitch IRC failed... Retrying')
+            self.logger.warning(f"{self.chat_client_id}) Connection to Twitch IRC failed... Retrying")
             time.sleep(5)
             self.create_sock()
             return self.connect()
         self.send_raw('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership', False)
         self.send_raw(f'PASS oauth:{self.oauth_password}', False)
         self.send_raw(f'NICK {self.nickname}', False)
-        self.logger.info("Connected to IRC...")
+        self.logger.info(f"{self.chat_client_id}) Connected to IRC...")
 
     def reconnect(self):
         if not self.running:
             return
 
+        if datetime.utcnow() - self.last_connection_attempt < timedelta(minutes=1):
+            self.logger.warning(f"{self.chat_client_id}) Connection attempt denied. Please wait for a minute between attempts.")
+            return
+
         old_reconnect_count = self.reconnect_count
+        self.logger.info(f"{self.chat_client_id}) Attempting to reconnect...({old_reconnect_count})")
         with self.lock:
             if old_reconnect_count != self.reconnect_count:
-                return
+                return  # another thread already reconnected
             self.reconnect_count += 1
             self.create_sock()
             self.connect()
@@ -238,14 +247,14 @@ class ChatClient(ChatEventHandler):
 
     def re_join(self):
         for channel_name in self.channel_names:
-            self.logger.info(f"Trying to re-join #{channel_name}")
+            self.logger.info(f"{self.chat_client_id}) Trying to re-join #{channel_name}")
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 
     def add_channel(self, channel_name: str, language: str):
         with self.lock:
             self.channel_names.append(channel_name)
             self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC, "language": language}
-            self.logger.info(f"Trying to join #{channel_name}")
+            self.logger.info(f"{self.chat_client_id}) Trying to join #{channel_name}")
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 
     def remove_channel(self, channel_name: str):
@@ -266,9 +275,9 @@ class ChatClient(ChatEventHandler):
         try:
             self.sock.send(f"{msg}\n".encode())
         except OSError as e:
-            self.logger.warning("Twitch IRC: Connection closed while sending.")
+            self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed while sending.")
             self.logger.error(e)
-            threading.Thread(target=self.reconnect).start()  # make sure the current reconnect call releases the lock
+            # threading.Thread(target=self.reconnect).start()  # make sure the current reconnect call releases the lock
         if lock:
             self.lock.release()
 
@@ -286,7 +295,7 @@ class ChatClient(ChatEventHandler):
         self.sock.close()
 
     def exit(self):
-        self.logger.info("Exiting socket")
+        self.logger.info(f"{self.chat_client_id}) Exiting socket")
         self.running = False
         time.sleep(3)
 
@@ -295,6 +304,6 @@ class ChatClient(ChatEventHandler):
                 try:
                     self.sock.shutdown(socket.SHUT_RDWR)  # Shutdown the socket before closing
                 except OSError as e:
-                    self.logger.error(f"Error during socket shutdown: {e}")
+                    self.logger.error(f"{self.chat_client_id}) Error during socket shutdown: {e}")
                 self.close()
-        self.logger.info("Exiting the bot gracefully.")
+        self.logger.info(f"{self.chat_client_id}) Exiting the bot gracefully.")
