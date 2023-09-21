@@ -187,7 +187,7 @@ class ChatClient(ChatEventHandler):
 
         old_reconnect_count = self.reconnect_count
         while self.running:
-
+            time.sleep(3)
             while self.running:
                 try:
                     data = self.sock.recv(1)
