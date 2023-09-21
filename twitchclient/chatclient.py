@@ -185,9 +185,7 @@ class ChatClient(ChatEventHandler):
     def _handle_recv(self):
         msg = b''
 
-        old_reconnect_count = self.reconnect_count
         while self.running:
-            time.sleep(3)
             while self.running:
                 try:
                     data = self.sock.recv(1)
@@ -210,9 +208,13 @@ class ChatClient(ChatEventHandler):
                 else:
                     msg += data
 
-            while old_reconnect_count == self.reconnect_count:
-                self.reconnect()
-                time.sleep(3)
+            if datetime.utcnow() - self.last_connection_attempt < timedelta(minutes=1):
+                remaining_time = timedelta(minutes=1) - (datetime.utcnow() - self.last_connection_attempt)
+                self.logger.warning(
+                    f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
+                time.sleep(remaining_time.total_seconds())
+
+            self.reconnect(force=True)
 
     def create_sock(self):
         self.close()
@@ -233,15 +235,16 @@ class ChatClient(ChatEventHandler):
         self.send_raw(f'NICK {self.nickname}', False)
         self.logger.info(f"{self.chat_client_id}) Connected to IRC...")
 
-    def reconnect(self):
+    def reconnect(self, force=False):
         if not self.running:
             return
 
-        if datetime.utcnow() - self.last_connection_attempt < timedelta(minutes=1):
-            remaining_time = timedelta(minutes=1) - (datetime.utcnow() - self.last_connection_attempt)
-            self.logger.warning(
-                f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
-            return
+        if not force:
+            if datetime.utcnow() - self.last_connection_attempt < timedelta(minutes=1):
+                remaining_time = timedelta(minutes=1) - (datetime.utcnow() - self.last_connection_attempt)
+                self.logger.warning(
+                    f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
+                return
 
         old_reconnect_count = self.reconnect_count
         self.logger.info(f"{self.chat_client_id}) Attempting to reconnect...({old_reconnect_count})")
