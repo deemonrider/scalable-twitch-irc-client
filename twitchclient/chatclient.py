@@ -241,6 +241,7 @@ class ChatClient(ChatEventHandler):
             if old_reconnect_count != self.reconnect_count:
                 return  # another thread already reconnected
             self.reconnect_count += 1
+            self.last_connection_attempt = datetime.utcnow()
             self.create_sock()
             self.connect()
             self.re_join()
