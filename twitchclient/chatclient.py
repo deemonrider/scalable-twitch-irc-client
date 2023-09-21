@@ -184,7 +184,10 @@ class ChatClient(ChatEventHandler):
 
     def _handle_recv(self):
         msg = b''
+
+        old_reconnect_count = self.reconnect_count
         while self.running:
+
             while self.running:
                 try:
                     data = self.sock.recv(1)
@@ -206,7 +209,10 @@ class ChatClient(ChatEventHandler):
                     msg = b''
                 else:
                     msg += data
-            self.reconnect()
+
+            while old_reconnect_count == self.reconnect_count:
+                self.reconnect()
+                time.sleep(3)
 
     def create_sock(self):
         self.close()
@@ -232,7 +238,9 @@ class ChatClient(ChatEventHandler):
             return
 
         if datetime.utcnow() - self.last_connection_attempt < timedelta(minutes=1):
-            self.logger.warning(f"{self.chat_client_id}) Connection attempt denied. Please wait for a minute between attempts.")
+            remaining_time = timedelta(minutes=1) - (datetime.utcnow() - self.last_connection_attempt)
+            self.logger.warning(
+                f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
             return
 
         old_reconnect_count = self.reconnect_count
@@ -240,6 +248,7 @@ class ChatClient(ChatEventHandler):
         with self.lock:
             if old_reconnect_count != self.reconnect_count:
                 return  # another thread already reconnected
+
             self.reconnect_count += 1
             self.last_connection_attempt = datetime.utcnow()
             self.create_sock()
