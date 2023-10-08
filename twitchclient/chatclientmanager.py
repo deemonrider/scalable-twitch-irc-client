@@ -33,6 +33,8 @@ class ChatClientManager:
         return client
 
     def add_channel(self, channel_name: str, language: str, avg_viewer: int) -> Tuple[ChatClient, bool]:
+        channel_name = channel_name.lower()
+
         with self.lock:
             target_client = None
             is_new = True
@@ -58,6 +60,8 @@ class ChatClientManager:
             return target_client, is_new
 
     def remove_channel(self, channel_name: str):
+        channel_name = channel_name.lower()
+
         with self.lock:
             for client in self.clients:
                 removed = client.remove_channel(channel_name)
