@@ -10,6 +10,7 @@ from twitchclient.chatmessage import ChatMessage
 
 BUFFER_SIZE = 4096
 TWITCH_CHAT_MSG_LENGTH_LIMIT = 500
+DEFAULT_RECONNECT_TIMEOUT = 30
 
 
 class ChatModes:
@@ -39,7 +40,7 @@ class ChatClient(ChatEventHandler):
         self.channels = {}
         self.last_ping = time.time()
         self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
-        self.connection_retry_timeout = 60  # in seconds
+        self.connection_retry_timeout = DEFAULT_RECONNECT_TIMEOUT  # in seconds
         self.connect()
         threading.Thread(target=self._handle_recv).start()
         threading.Thread(target=self._ping).start()
@@ -88,7 +89,7 @@ class ChatClient(ChatEventHandler):
         if msg == "PING :tmi.twitch.tv":
             self.send_raw("PONG :tmi.twitch.tv")
             self.last_ping = time.time()
-            self.connection_retry_timeout = 60
+            self.connection_retry_timeout = DEFAULT_RECONNECT_TIMEOUT
             return
         elif msg == ":tmi.twitch.tv PONG tmi.twitch.tv :tmi.twitch.tv":
             self.last_ping = time.time()
@@ -188,10 +189,6 @@ class ChatClient(ChatEventHandler):
         else:
             self.logger.warning(msg)
 
-    def double_connection_retry_timeout(self):
-        if self.connection_retry_timeout < 60 * 30:
-            self.connection_retry_timeout *= 2
-
     def _handle_recv(self):
         msg = b''
 
@@ -202,17 +199,14 @@ class ChatClient(ChatEventHandler):
                 except ConnectionResetError:
                     self.logger.warning(
                         f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionResetError.")
-                    self.double_connection_retry_timeout()
                     break
                 except ConnectionAbortedError:
                     self.logger.warning(
                         f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
-                    self.double_connection_retry_timeout()
                     break
                 except OSError as e:
                     self.logger.warning(
                         f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError: {str(e)}. Errno: {e.errno}")
-                    self.double_connection_retry_timeout()
                     break
 
                 msg += data
@@ -220,14 +214,7 @@ class ChatClient(ChatEventHandler):
                     line, msg = msg.split(b'\n', 1)
                     self._handle_msg(line.decode().strip())
 
-            now = datetime.utcnow()
-            if now - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
-                remaining_time = self.connection_retry_timeout - (now - self.last_connection_attempt).total_seconds()
-                self.logger.warning(
-                    f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time} seconds between attempts.")
-                time.sleep(remaining_time)
-
-            self.reconnect(force=True)
+            self.reconnect()
 
     def create_sock(self):
         self.close()
@@ -248,22 +235,24 @@ class ChatClient(ChatEventHandler):
         self.send_raw(f'NICK {self.nickname}', False)
         self.logger.info(f"{self.chat_client_id}) Connected to IRC...")
 
-    def reconnect(self, force=False):
+    def reconnect(self):
         if not self.running:
             return
 
-        if not force:
-            if datetime.utcnow() - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
-                remaining_time = timedelta(seconds=self.connection_retry_timeout) - (datetime.utcnow() - self.last_connection_attempt)
-                self.logger.warning(
-                    f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
-                return
+        if datetime.utcnow() - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
+            remaining_time = timedelta(seconds=self.connection_retry_timeout) - (datetime.utcnow() - self.last_connection_attempt)
+            self.logger.warning(
+                f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
+            return
 
         old_reconnect_count = self.reconnect_count
         self.logger.info(f"{self.chat_client_id}) Attempting to reconnect...({old_reconnect_count})")
         with self.lock:
             if old_reconnect_count != self.reconnect_count:
                 return  # another thread already reconnected
+
+            if self.connection_retry_timeout < 60 * 30:
+                self.connection_retry_timeout *= 2
 
             self.reconnect_count += 1
             self.last_connection_attempt = datetime.utcnow()
@@ -273,8 +262,10 @@ class ChatClient(ChatEventHandler):
 
     def re_join(self):
         for channel_name in self.channel_names:
+            if not self.running:
+                return
             self.logger.info(f"{self.chat_client_id}) Trying to re-join #{channel_name}")
-            time.sleep(5)  # prevent hitting any twitch limits
+            time.sleep(3)  # prevent hitting any twitch limits
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 
     def add_channel(self, channel_name: str, language: str):
@@ -324,7 +315,7 @@ class ChatClient(ChatEventHandler):
     def exit(self):
         self.logger.info(f"{self.chat_client_id}) Exiting socket")
         self.running = False
-        time.sleep(3)
+        time.sleep(5)
 
         with self.lock:  # Lock here, in case other threads are using the socket
             if self.sock:  # Check if sock exists before closing
