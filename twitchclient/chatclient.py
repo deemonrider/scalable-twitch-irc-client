@@ -8,6 +8,10 @@ from twitchclient.chateventhandler import ChatEventHandler
 from twitchclient.chatmessage import ChatMessage
 
 
+BUFFER_SIZE = 4096
+TWITCH_CHAT_MSG_LENGTH_LIMIT = 500
+
+
 class ChatModes:
     PUBLIC = "PUBLIC"
     FOLLOWER = "FOLLOWER"
@@ -189,40 +193,31 @@ class ChatClient(ChatEventHandler):
             self.connection_retry_timeout *= 2
 
     def _handle_recv(self):
-        msg = b''
-
         while self.running:
             while self.running:
                 try:
-                    data = self.sock.recv(1)
-                except ConnectionResetError:
-                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionResetError.")
-                    self.double_connection_retry_timeout()
-                    break
-                except ConnectionAbortedError:
-                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
-                    self.double_connection_retry_timeout()
-                    break
-                except OSError as e:
+                    data = self.sock.recv(BUFFER_SIZE)
+                    if not data:
+                        self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by server.")
+                        break
+
+                    messages = data.split(b'\n')
+                    for msg in messages:
+                        decoded_msg = msg.decode().strip()
+                        if decoded_msg:  # Make sure the message is not empty
+                            self._handle_msg(decoded_msg)
+                except (ConnectionResetError, ConnectionAbortedError, OSError) as e:
                     self.logger.warning(
-                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError: {str(e)}. Errno: {e.errno}")
+                        f"{self.chat_client_id}) Twitch IRC: Connection error {type(e).__name__}. Errno: {getattr(e, 'errno', '')}")
                     self.double_connection_retry_timeout()
                     break
 
-                if not data:
-                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by server.")
-                    break
-                if data == b'\n':
-                    self._handle_msg(msg.decode().strip())
-                    msg = b''
-                else:
-                    msg += data
-
-            if datetime.utcnow() - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
-                remaining_time = timedelta(seconds=self.connection_retry_timeout) - (datetime.utcnow() - self.last_connection_attempt)
+            now = datetime.utcnow()
+            if now - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
+                remaining_time = self.connection_retry_timeout - (now - self.last_connection_attempt).total_seconds()
                 self.logger.warning(
-                    f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
-                time.sleep(remaining_time.total_seconds())
+                    f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time} seconds between attempts.")
+                time.sleep(remaining_time)
 
             self.reconnect(force=True)
 
@@ -306,8 +301,8 @@ class ChatClient(ChatEventHandler):
             self.lock.release()
 
     def send_msg(self, msg: str, channel_name: str):
-        if len(msg) > 500:
-            msg = msg[:497] + "..."
+        if len(msg) > TWITCH_CHAT_MSG_LENGTH_LIMIT:
+            msg = msg[:TWITCH_CHAT_MSG_LENGTH_LIMIT-3] + "..."
         self.send_raw(f"PRIVMSG #{channel_name} :{msg}")
 
     def broadcast(self, msg: str):
