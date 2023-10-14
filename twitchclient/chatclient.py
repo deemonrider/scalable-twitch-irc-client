@@ -193,24 +193,36 @@ class ChatClient(ChatEventHandler):
             self.connection_retry_timeout *= 2
 
     def _handle_recv(self):
+        msg = b''
+
         while self.running:
             while self.running:
                 try:
-                    data = self.sock.recv(BUFFER_SIZE)
-                    if not data:
-                        self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by server.")
-                        break
-
-                    messages = data.split(b'\n')
-                    for msg in messages:
-                        decoded_msg = msg.decode().strip()
-                        if decoded_msg:  # Make sure the message is not empty
-                            self._handle_msg(decoded_msg)
-                except (ConnectionResetError, ConnectionAbortedError, OSError) as e:
+                    data = self.sock.recv(1)
+                except ConnectionResetError:
                     self.logger.warning(
-                        f"{self.chat_client_id}) Twitch IRC: Connection error {type(e).__name__}. Errno: {getattr(e, 'errno', '')}")
+                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionResetError.")
                     self.double_connection_retry_timeout()
                     break
+                except ConnectionAbortedError:
+                    self.logger.warning(
+                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
+                    self.double_connection_retry_timeout()
+                    break
+                except OSError as e:
+                    self.logger.warning(
+                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError: {str(e)}. Errno: {e.errno}")
+                    self.double_connection_retry_timeout()
+                    break
+
+                if not data:
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by server.")
+                    break
+                if data == b'\n':
+                    self._handle_msg(msg.decode().strip())
+                    msg = b''
+                else:
+                    msg += data
 
             now = datetime.utcnow()
             if now - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
