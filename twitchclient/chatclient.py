@@ -253,8 +253,8 @@ class ChatClient(ChatEventHandler):
             return
 
         if not force:
-            if datetime.utcnow() - self.last_connection_attempt < timedelta(minutes=1):
-                remaining_time = timedelta(minutes=1) - (datetime.utcnow() - self.last_connection_attempt)
+            if datetime.utcnow() - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
+                remaining_time = timedelta(seconds=self.connection_retry_timeout) - (datetime.utcnow() - self.last_connection_attempt)
                 self.logger.warning(
                     f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
                 return
