@@ -271,6 +271,7 @@ class ChatClient(ChatEventHandler):
     def re_join(self):
         for channel_name in self.channel_names:
             self.logger.info(f"{self.chat_client_id}) Trying to re-join #{channel_name}")
+            time.sleep(5)  # prevent hitting any twitch limits
             self.send_raw(f'JOIN #{channel_name}', lock=False)
 
     def add_channel(self, channel_name: str, language: str):
