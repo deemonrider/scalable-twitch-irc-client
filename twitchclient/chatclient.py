@@ -195,8 +195,9 @@ class ChatClient(ChatEventHandler):
                 except ConnectionAbortedError:
                     self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
                     break
-                except OSError:
-                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError.")
+                except OSError as e:
+                    self.logger.warning(
+                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError: {str(e)}. Errno: {e.errno}")
                     break
 
                 if not data:
