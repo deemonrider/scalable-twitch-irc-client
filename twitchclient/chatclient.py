@@ -198,7 +198,7 @@ class ChatClient(ChatEventHandler):
         while self.running:
             while self.running:
                 try:
-                    data = self.sock.recv(1)
+                    data = self.sock.recv(BUFFER_SIZE)
                 except ConnectionResetError:
                     self.logger.warning(
                         f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionResetError.")
@@ -215,14 +215,10 @@ class ChatClient(ChatEventHandler):
                     self.double_connection_retry_timeout()
                     break
 
-                if not data:
-                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by server.")
-                    break
-                if data == b'\n':
-                    self._handle_msg(msg.decode().strip())
-                    msg = b''
-                else:
-                    msg += data
+                msg += data
+                while b'\n' in msg:
+                    line, msg = msg.split(b'\n', 1)
+                    self._handle_msg(line.decode().strip())
 
             now = datetime.utcnow()
             if now - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
