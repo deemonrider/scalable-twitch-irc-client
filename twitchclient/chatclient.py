@@ -241,8 +241,12 @@ class ChatClient(ChatEventHandler):
 
         if datetime.utcnow() - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
             remaining_time = timedelta(seconds=self.connection_retry_timeout) - (datetime.utcnow() - self.last_connection_attempt)
+
+            sleep_seconds = remaining_time.total_seconds()
             self.logger.warning(
-                f"{self.chat_client_id}) Connection attempt denied. Please wait {remaining_time.total_seconds()} seconds between attempts.")
+                f"{self.chat_client_id}) Connection attempt denied. Please wait {sleep_seconds} seconds between attempts.")
+
+            time.sleep(sleep_seconds)
             return
 
         old_reconnect_count = self.reconnect_count
