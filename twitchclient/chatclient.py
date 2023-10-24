@@ -3,6 +3,7 @@ import socket
 import threading
 import time
 from datetime import timedelta, datetime
+from random import uniform
 
 from twitchclient.chateventhandler import ChatEventHandler
 from twitchclient.chatmessage import ChatMessage
@@ -18,6 +19,55 @@ class ChatModes:
     FOLLOWER = "FOLLOWER"
     SUBSCRIBER = "SUBSCRIBER"
     EMOTE = "EMOTE"
+
+
+class Reconnector:
+    def __init__(self, chat_client):
+        self.chat_client = chat_client
+        self.reconnect_flag = threading.Event()
+
+    def request_reconnect(self):
+        self.chat_client.logger.warning(f"{self.chat_client.chat_client_id}) Requesting reconnect.")
+        self.reconnect_flag.set()
+
+    def run(self):
+        while self.chat_client.running:
+            self.reconnect_flag.wait()  # Wait for a reconnect request
+            self.reconnect_flag.clear()  # Reset the flag
+            self.perform_reconnect()
+
+    def perform_reconnect(self):
+        chat_client = self.chat_client
+
+        if not chat_client.running:
+            return
+        chat_client.logger.warning(f"{chat_client.chat_client_id}) Performing reconnect.")
+
+        with chat_client.lock:
+            if datetime.utcnow() - chat_client.last_connection_attempt < timedelta(seconds=chat_client.connection_retry_timeout):
+                remaining_time = timedelta(seconds=chat_client.connection_retry_timeout) - (datetime.utcnow() - chat_client.last_connection_attempt)
+                sleep_seconds = remaining_time.total_seconds()
+                jitter = uniform(0.5, 1.5)  # Adding jitter to desynchronize reconnection attempts
+                sleep_seconds *= jitter
+                chat_client.logger.warning(
+                    f"{chat_client.chat_client_id}) Connection attempt denied. Please wait {sleep_seconds} seconds between attempts.")
+                time.sleep(sleep_seconds)
+                return
+
+            old_reconnect_count = chat_client.reconnect_count
+            chat_client.logger.info(f"{chat_client.chat_client_id}) Attempting to reconnect...({old_reconnect_count})")
+
+            if old_reconnect_count != chat_client.reconnect_count:
+                return  # another thread already reconnected
+
+            if chat_client.connection_retry_timeout < 60 * 30:
+                chat_client.connection_retry_timeout *= 2
+
+            chat_client.reconnect_count += 1
+            chat_client.last_connection_attempt = datetime.utcnow()
+            chat_client.create_sock()
+            chat_client.connect()
+            chat_client.re_join()
 
 
 class ChatClient(ChatEventHandler):
@@ -42,6 +92,10 @@ class ChatClient(ChatEventHandler):
         self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
         self.connection_retry_timeout = DEFAULT_RECONNECT_TIMEOUT  # in seconds
         self.connect()
+
+        self.reconnector = Reconnector(self)
+        threading.Thread(target=self.reconnector.run).start()
+
         threading.Thread(target=self._handle_recv).start()
         threading.Thread(target=self._ping).start()
         threading.Thread(target=self.cleanup).start()
@@ -236,33 +290,7 @@ class ChatClient(ChatEventHandler):
         self.logger.info(f"{self.chat_client_id}) Connected to IRC...")
 
     def reconnect(self):
-        if not self.running:
-            return
-
-        if datetime.utcnow() - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
-            remaining_time = timedelta(seconds=self.connection_retry_timeout) - (datetime.utcnow() - self.last_connection_attempt)
-
-            sleep_seconds = remaining_time.total_seconds()
-            self.logger.warning(
-                f"{self.chat_client_id}) Connection attempt denied. Please wait {sleep_seconds} seconds between attempts.")
-
-            time.sleep(sleep_seconds)
-            return
-
-        old_reconnect_count = self.reconnect_count
-        self.logger.info(f"{self.chat_client_id}) Attempting to reconnect...({old_reconnect_count})")
-        with self.lock:
-            if old_reconnect_count != self.reconnect_count:
-                return  # another thread already reconnected
-
-            if self.connection_retry_timeout < 60 * 30:
-                self.connection_retry_timeout *= 2
-
-            self.reconnect_count += 1
-            self.last_connection_attempt = datetime.utcnow()
-            self.create_sock()
-            self.connect()
-            self.re_join()
+        self.reconnector.request_reconnect()
 
     def re_join(self):
         for channel_name in self.channel_names:
@@ -299,7 +327,7 @@ class ChatClient(ChatEventHandler):
         except OSError as e:
             self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed while sending.")
             self.logger.error(e)
-            threading.Thread(target=self.reconnect).start()  # make sure the current reconnect call releases the lock
+            self.reconnect()
         if lock:
             self.lock.release()
 
