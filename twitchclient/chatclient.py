@@ -3,7 +3,7 @@ import socket
 import threading
 import time
 from datetime import timedelta, datetime
-from random import uniform
+from random import uniform, randint
 
 from twitchclient.chateventhandler import ChatEventHandler
 from twitchclient.chatmessage import ChatMessage
@@ -268,6 +268,8 @@ class ChatClient(ChatEventHandler):
                     line, msg = msg.split(b'\n', 1)
                     self._handle_msg(line.decode().strip())
 
+            sleep_time = randint(5, 60)
+            time.sleep(sleep_time)
             self.reconnect()
 
     def create_sock(self):
