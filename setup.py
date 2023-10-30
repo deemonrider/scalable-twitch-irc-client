@@ -9,6 +9,7 @@ setup(
     description='-',
     packages=find_packages(),
     install_requires=[
-        "requests==2.31.0"
+        "requests==2.31.0",
+        "websockets==12.0",
     ],
 )

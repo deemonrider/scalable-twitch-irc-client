@@ -2,6 +2,7 @@ import logging
 import socket
 import threading
 import time
+import asyncio
 from datetime import timedelta, datetime
 from random import uniform, randint
 
@@ -9,7 +10,6 @@ from twitchclient.chateventhandler import ChatEventHandler
 from twitchclient.chatmessage import ChatMessage
 
 
-BUFFER_SIZE = 4096
 TWITCH_CHAT_MSG_LENGTH_LIMIT = 500
 DEFAULT_RECONNECT_TIMEOUT = 30
 
@@ -21,61 +21,11 @@ class ChatModes:
     EMOTE = "EMOTE"
 
 
-class Reconnector:
-    def __init__(self, chat_client):
-        self.chat_client = chat_client
-        self.reconnect_flag = threading.Event()
-
-    def request_reconnect(self):
-        self.chat_client.logger.warning(f"{self.chat_client.chat_client_id}) Requesting reconnect.")
-        self.reconnect_flag.set()
-
-    def run(self):
-        while self.chat_client.running:
-            self.reconnect_flag.wait()  # Wait for a reconnect request
-            self.reconnect_flag.clear()  # Reset the flag
-            self.perform_reconnect()
-
-    def perform_reconnect(self):
-        chat_client = self.chat_client
-
-        if not chat_client.running:
-            return
-        chat_client.logger.warning(f"{chat_client.chat_client_id}) Performing reconnect.")
-
-        with chat_client.lock:
-            if datetime.utcnow() - chat_client.last_connection_attempt < timedelta(seconds=chat_client.connection_retry_timeout):
-                remaining_time = timedelta(seconds=chat_client.connection_retry_timeout) - (datetime.utcnow() - chat_client.last_connection_attempt)
-                sleep_seconds = remaining_time.total_seconds()
-                jitter = uniform(0.5, 1.5)  # Adding jitter to desynchronize reconnection attempts
-                sleep_seconds *= jitter
-                chat_client.logger.warning(
-                    f"{chat_client.chat_client_id}) Connection attempt denied. Please wait {sleep_seconds} seconds between attempts.")
-                time.sleep(sleep_seconds)
-                return
-
-            old_reconnect_count = chat_client.reconnect_count
-            chat_client.logger.info(f"{chat_client.chat_client_id}) Attempting to reconnect...({old_reconnect_count})")
-
-            if old_reconnect_count != chat_client.reconnect_count:
-                return  # another thread already reconnected
-
-            if chat_client.connection_retry_timeout < 60 * 30:
-                chat_client.connection_retry_timeout *= 2
-
-            chat_client.reconnect_count += 1
-            chat_client.last_connection_attempt = datetime.utcnow()
-            chat_client.create_sock()
-            chat_client.connect()
-            chat_client.re_join()
-
-
 class ChatClient(ChatEventHandler):
     def __init__(self, oauth_password: str, nickname: str, twitch_id, logger, chat_client_id=-1):
         super().__init__()
         self.chat_client_id = chat_client_id
         self.running = True
-        self.lock = threading.Lock()
         self.logger = logger
         self.bot_logger = logging.getLogger(f"bot-detection")
         self.oauth_password = oauth_password
@@ -84,26 +34,38 @@ class ChatClient(ChatEventHandler):
         self.users = {}
         self.sock = socket.socket()
         self.sock.settimeout(120)  # ping timeout
-        self.reconnect_count = 0  # prevent multiple reconnects at the same time
         self.last_connection_attempt = datetime.utcnow() - timedelta(minutes=30)
         self.channel_names = []
         self.channels = {}
         self.last_ping = time.time()
         self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
         self.connection_retry_timeout = DEFAULT_RECONNECT_TIMEOUT  # in seconds
-        self.connect()
+        self.pending_channels = []  # Queue to store pending channel join requests
 
-        self.reconnector = Reconnector(self)
-        threading.Thread(target=self.reconnector.run).start()
+        self.reader = None
+        self.writer = None
 
-        threading.Thread(target=self._handle_recv).start()
-        threading.Thread(target=self._ping).start()
-        threading.Thread(target=self.cleanup).start()
+        self.loop = asyncio.new_event_loop()
 
-    def cleanup(self):
+        threading.Thread(target=self.start_eventloop).start()
+
+    def start_eventloop(self):
+        asyncio.set_event_loop(self.loop)
+
+        self.loop.run_until_complete(self.connect())
+
+        # Schedule coroutine executions
+        self.loop.create_task(self._handle_recv())
+        self.loop.create_task(self._ping())
+        self.loop.create_task(self.cleanup())
+
+        # Start the event loop
+        self.loop.run_forever()
+
+    async def cleanup(self):
         i = 0
         while self.running:
-            time.sleep(1)
+            await asyncio.sleep(1)
             i += 1
             if i == 5 * 60:  # all 5 minutes
                 i = 0
@@ -113,33 +75,30 @@ class ChatClient(ChatEventHandler):
                         self.users.pop(user)
         self.logger.info(f"{self.chat_client_id}) Exiting cleanup thread gracefully.")
 
-    def get_logger(self):
-        return self.logger
-
-    def _ping(self):
+    async def _ping(self):
         while self.running:
             for i in range(60):  # 60 seconds
                 if not self.running:  # Check if the bot is still running
                     return
-                time.sleep(1)  # Sleep for 1 second
+                await asyncio.sleep(1)  # Sleep for 1 second
 
             self.send_raw("PING :tmi.twitch.tv")
-            time.sleep(2)
+            await asyncio.sleep(2)
             if time.time() - self.last_ping > 60 * 2:
                 self.logger.warning(f"{self.chat_client_id}) NO PONG RECEIVED, LAST PING: {datetime.fromtimestamp(self.last_ping)}!")
                 if time.time() - self.last_ping > 60 * 5:
                     self.logger.warning(f"{self.chat_client_id}) NO PONG RECEIVED FOR 5 MINUTES, RECONNECTING!")
-                    self.reconnect()
+                    await self.reconnect()
             else:
                 self.logger.info(f"{self.chat_client_id}) PONG less than 2 minutes ago")
         self.logger.info(f"{self.chat_client_id}) Exiting ping thread gracefully.")
 
-    def rejoin_after_timeout(self, channel_name: str, timeout: int):
-        time.sleep(timeout + 3)
+    async def rejoin_after_timeout(self, channel_name: str, timeout: int):
+        await asyncio.sleep(timeout + 3)
         language = self.channels[channel_name]["language"]
         self.add_channel(channel_name, language)
 
-    def _handle_msg(self, msg: str):
+    async def _handle_msg(self, msg: str):
         if msg == "PING :tmi.twitch.tv":
             self.send_raw("PONG :tmi.twitch.tv")
             self.last_ping = time.time()
@@ -243,95 +202,135 @@ class ChatClient(ChatEventHandler):
         else:
             self.logger.warning(msg)
 
-    def _handle_recv(self):
-        msg = b''
+    async def _handle_recv(self):
+        msg = ''
 
         while self.running:
             while self.running:
                 try:
-                    data = self.sock.recv(BUFFER_SIZE)
-                except ConnectionResetError:
-                    self.logger.warning(
-                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionResetError.")
+                    data = await self.reader.readline()
+                    if not data:  # Empty data means the connection was closed
+                        self.logger.warning(f"{self.chat_client_id}) Connection closed by the server.")
+                        break
+                except ConnectionResetError as e:
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC ConnectionResetError error: {str(e)}.")
                     break
-                except ConnectionAbortedError:
-                    self.logger.warning(
-                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to ConnectionAbortedError.")
+                except ConnectionAbortedError as e:
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC ConnectionAbortedError error: {str(e)}.")
                     break
                 except OSError as e:
-                    self.logger.warning(
-                        f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError: {str(e)}. Errno: {e.errno}")
+                    self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed by client due to OSError: {str(e)}.")
                     break
 
-                msg += data
-                while b'\n' in msg:
-                    line, msg = msg.split(b'\n', 1)
-                    self._handle_msg(line.decode().strip())
+                msg += data.decode()
+                while '\n' in msg:
+                    line, msg = msg.split('\n', 1)
+                    await self._handle_msg(line.strip())
 
-            sleep_time = randint(5, 60)
-            time.sleep(sleep_time)
-            self.reconnect()
+            await asyncio.sleep(randint(5, 60))
+            self.logger.info(f"{self.chat_client_id}) Attempting to reconnect due to connection loss.")
+            await self.reconnect()
 
-    def create_sock(self):
+    async def create_sock(self):
         self.close()
         self.sock = socket.socket()
-        self.sock.settimeout(120)  # ping timeout
+        self.reader, self.writer = await asyncio.open_connection('irc.chat.twitch.tv', 6667)
 
-    def connect(self):
+    async def connect(self):
         self.logger.info(f"{self.chat_client_id}) Connecting to Twitch IRC...")
         try:
-            self.sock.connect(('irc.chat.twitch.tv', 6667))
-        except (TimeoutError, socket.timeout, OSError):
-            self.logger.warning(f"{self.chat_client_id}) Connection to Twitch IRC failed... Retrying")
-            time.sleep(5)
-            self.create_sock()
-            return self.connect()
-        self.send_raw('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership', False)
-        self.send_raw(f'PASS oauth:{self.oauth_password}', False)
-        self.send_raw(f'NICK {self.nickname}', False)
+            await self.create_sock()
+        except (TimeoutError, OSError):
+            self.logger.warning(f"{self.chat_client_id}) Connection to Twitch IRC failed: {e}. Retrying...")
+            await asyncio.sleep(5)
+            await self.connect()
+            return
+
+        self.send_raw('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership')
+        self.send_raw(f'PASS oauth:{self.oauth_password}')
+        self.send_raw(f'NICK {self.nickname}')
         self.logger.info(f"{self.chat_client_id}) Connected to IRC...")
 
-    def reconnect(self):
-        self.reconnector.request_reconnect()
+        await self.process_pending_channels()
 
-    def re_join(self):
+    async def process_pending_channels(self):
+        while self.pending_channels:
+            channel_name, language = self.pending_channels.pop(0)
+            self.add_channel(channel_name, language)
+
+    async def reconnect(self):
+        self.logger.warning(f"{self.chat_client_id}) Attempting to reconnect...")
+        await asyncio.sleep(self.connection_retry_timeout)
+
+        if not self.running:
+            return
+        self.logger.warning(f"{self.chat_client_id}) Performing reconnect.")
+
+        if datetime.utcnow() - self.last_connection_attempt < timedelta(seconds=self.connection_retry_timeout):
+            remaining_time = timedelta(seconds=self.connection_retry_timeout) - (datetime.utcnow() - self.last_connection_attempt)
+            sleep_seconds = remaining_time.total_seconds()
+            jitter = uniform(0.5, 1.5)  # Adding jitter to desynchronize reconnection attempts
+            sleep_seconds *= jitter
+            self.logger.warning(
+                f"{self.chat_client_id}) Connection attempt denied. Please wait {sleep_seconds} seconds between attempts.")
+            await asyncio.sleep(sleep_seconds)
+            return
+
+        self.logger.info(f"{self.chat_client_id}) Attempting to reconnect...")
+
+        if self.connection_retry_timeout < 60 * 30:
+            self.connection_retry_timeout *= 2
+
+        self.last_connection_attempt = datetime.utcnow()
+        await self.connect()
+        await self.re_join()
+
+    async def re_join(self):
         for channel_name in self.channel_names:
             if not self.running:
                 return
             self.logger.info(f"{self.chat_client_id}) Trying to re-join #{channel_name}")
-            time.sleep(3)  # prevent hitting any twitch limits
-            self.send_raw(f'JOIN #{channel_name}', lock=False)
+            await asyncio.sleep(3)  # prevent hitting any twitch limits
+            self.send_raw(f'JOIN #{channel_name}')
 
     def add_channel(self, channel_name: str, language: str):
-        with self.lock:
-            self.channel_names.append(channel_name)
-            self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC, "language": language}
-            self.logger.info(f"{self.chat_client_id}) Trying to join #{channel_name}")
-            self.send_raw(f'JOIN #{channel_name}', lock=False)
-
-    def remove_channel(self, channel_name: str):
-        with self.lock:
-            if channel_name in self.channel_names and channel_name in self.channels:
-                self.channel_names.remove(channel_name)
-                self.channels.pop(channel_name)
-                self.send_raw(f"PART #{channel_name}", lock=False)
-                return True  # success
-            return False  # channel not in this cluster
-
-    def send_raw(self, msg: str, lock=True):
-        if not self.running:
+        if not self.writer:  # Check if connected
+            self.logger.info(f"{self.chat_client_id}) Queuing channel #{channel_name} for joining after connection.")
+            self.pending_channels.append((channel_name, language))
             return
 
-        if lock:
-            self.lock.acquire()
+        self.channel_names.append(channel_name)
+        self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC, "language": language}
+        self.logger.info(f"{self.chat_client_id}) Trying to join #{channel_name}")
+        self.send_raw(f'JOIN #{channel_name}')
+
+    def remove_channel(self, channel_name: str):
+        if channel_name in self.channel_names and channel_name in self.channels:
+            self.channel_names.remove(channel_name)
+            self.channels.pop(channel_name)
+            self.send_raw(f"PART #{channel_name}")
+            return True  # success
+        return False  # channel not in this cluster
+
+    def send_raw(self, message):
+        # Schedule sending message in the event loop
+        self.loop.call_soon_threadsafe(asyncio.create_task, self.send_message(message))
+
+    async def send_message(self, message):
+        # Ensure we have a writer
+        if not self.writer:
+            return
+        self.writer.write((message + '\n').encode())
+
         try:
-            self.sock.send(f"{msg}\n".encode())
+            await self.writer.drain()  # Now it's safe to await drain
+        except ConnectionResetError as e:
+            self.logger.warning(f"{self.chat_client_id}) self.writer.drain() Twitch IRC ConnectionResetError error: {str(e)}.")
+        except ConnectionAbortedError as e:
+            self.logger.warning(f"{self.chat_client_id}) self.writer.drain() Twitch IRC ConnectionAbortedError error: {str(e)}.")
         except OSError as e:
-            self.logger.warning(f"{self.chat_client_id}) Twitch IRC: Connection closed while sending.")
-            self.logger.error(e)
-            self.reconnect()
-        if lock:
-            self.lock.release()
+            self.logger.warning(
+                f"{self.chat_client_id}) self.writer.drain() Twitch IRC: Connection closed by client due to OSError: {str(e)}.")
 
     def send_msg(self, msg: str, channel_name: str):
         if len(msg) > TWITCH_CHAT_MSG_LENGTH_LIMIT:
@@ -343,19 +342,31 @@ class ChatClient(ChatEventHandler):
             self.send_msg(msg, channel_name)
 
     def close(self):
-        """ Automatically reconnects """
-        self.sock.close()
+        if self.writer:
+            try:
+                self.writer.close()
+                asyncio.create_task(self.writer.wait_closed())
+            except Exception as e:
+                self.logger.error(f"{self.chat_client_id}) Error during writer close: {e}")
+
+        if self.sock:
+            try:
+                self.sock.close()
+            except OSError as e:
+                self.logger.error(f"{self.chat_client_id}) Error during socket close: {e}")
+
+    def get_logger(self):
+        return self.logger
 
     def exit(self):
         self.logger.info(f"{self.chat_client_id}) Exiting socket")
         self.running = False
         time.sleep(5)
 
-        with self.lock:  # Lock here, in case other threads are using the socket
-            if self.sock:  # Check if sock exists before closing
-                try:
-                    self.sock.shutdown(socket.SHUT_RDWR)  # Shutdown the socket before closing
-                except OSError as e:
-                    self.logger.error(f"{self.chat_client_id}) Error during socket shutdown: {e}")
-                self.close()
+        if self.sock:  # Check if sock exists before closing
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)  # Shutdown the socket before closing
+            except OSError as e:
+                self.logger.error(f"{self.chat_client_id}) Error during socket shutdown: {e}")
+            self.close()
         self.logger.info(f"{self.chat_client_id}) Exiting the bot gracefully.")
