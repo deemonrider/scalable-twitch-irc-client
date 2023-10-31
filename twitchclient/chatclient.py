@@ -32,8 +32,6 @@ class ChatClient(ChatEventHandler):
         self.nickname = nickname
         self.twitch_id = twitch_id
         self.users = {}
-        self.sock = socket.socket()
-        self.sock.settimeout(120)  # ping timeout
         self.last_connection_attempt = datetime.utcnow() - timedelta(minutes=30)
         self.channel_names = []
         self.channels = {}
@@ -204,14 +202,19 @@ class ChatClient(ChatEventHandler):
 
     async def _handle_recv(self):
         msg = ''
+        timeout_duration = 120
 
         while self.running:
             while self.running:
                 try:
-                    data = await self.reader.readline()
+                    data = await asyncio.wait_for(self.reader.readline(), timeout_duration)
                     if not data:  # Empty data means the connection was closed
                         self.logger.warning(f"{self.chat_client_id}) Connection closed by the server.")
                         break
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        f"{self.chat_client_id}) Timeout: No data received in {timeout_duration} seconds.")
+                    break
                 except ConnectionResetError as e:
                     self.logger.warning(f"{self.chat_client_id}) Twitch IRC ConnectionResetError error: {str(e)}.")
                     break
@@ -233,7 +236,6 @@ class ChatClient(ChatEventHandler):
 
     async def create_sock(self):
         self.close()
-        self.sock = socket.socket()
         self.reader, self.writer = await asyncio.open_connection('irc.chat.twitch.tv', 6667)
 
     async def connect(self):
@@ -345,15 +347,11 @@ class ChatClient(ChatEventHandler):
         if self.writer:
             try:
                 self.writer.close()
-                asyncio.create_task(self.writer.wait_closed())
+                self.loop.create_task(self.writer.wait_closed())
             except Exception as e:
                 self.logger.error(f"{self.chat_client_id}) Error during writer close: {e}")
-
-        if self.sock:
-            try:
-                self.sock.close()
-            except OSError as e:
-                self.logger.error(f"{self.chat_client_id}) Error during socket close: {e}")
+            finally:
+                self.writer = None
 
     def get_logger(self):
         return self.logger
@@ -362,11 +360,5 @@ class ChatClient(ChatEventHandler):
         self.logger.info(f"{self.chat_client_id}) Exiting socket")
         self.running = False
         time.sleep(5)
-
-        if self.sock:  # Check if sock exists before closing
-            try:
-                self.sock.shutdown(socket.SHUT_RDWR)  # Shutdown the socket before closing
-            except OSError as e:
-                self.logger.error(f"{self.chat_client_id}) Error during socket shutdown: {e}")
-            self.close()
+        self.close()
         self.logger.info(f"{self.chat_client_id}) Exiting the bot gracefully.")
