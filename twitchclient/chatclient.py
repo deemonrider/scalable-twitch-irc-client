@@ -1,5 +1,4 @@
 import logging
-import socket
 import threading
 import time
 import asyncio
@@ -328,11 +327,14 @@ class ChatClient(ChatEventHandler):
             await self.writer.drain()  # Now it's safe to await drain
         except ConnectionResetError as e:
             self.logger.warning(f"{self.chat_client_id}) self.writer.drain() Twitch IRC ConnectionResetError error: {str(e)}.")
+            self.logger.warning(f'{self.chat_client_id}) sending "{message}" failed.')
         except ConnectionAbortedError as e:
             self.logger.warning(f"{self.chat_client_id}) self.writer.drain() Twitch IRC ConnectionAbortedError error: {str(e)}.")
+            self.logger.warning(f'{self.chat_client_id}) sending "{message}" failed.')
         except OSError as e:
             self.logger.warning(
                 f"{self.chat_client_id}) self.writer.drain() Twitch IRC: Connection closed by client due to OSError: {str(e)}.")
+            self.logger.warning(f'{self.chat_client_id}) sending "{message}" failed.')
 
     def send_msg(self, msg: str, channel_name: str):
         if len(msg) > TWITCH_CHAT_MSG_LENGTH_LIMIT:
