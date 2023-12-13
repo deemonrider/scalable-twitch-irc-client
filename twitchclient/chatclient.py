@@ -305,6 +305,7 @@ class ChatClient(ChatEventHandler):
         while self.pending_channels:
             channel_name, language = self.pending_channels.pop(0)
             self.add_channel(channel_name, language)
+            await asyncio.sleep(0.5)
 
     def add_channel(self, channel_name: str, language: str):
         if not self.writer:  # Check if connected
@@ -332,6 +333,8 @@ class ChatClient(ChatEventHandler):
     async def send_message(self, message):
         # Ensure we have a writer
         if not self.writer:
+            return
+        if not self.running:
             return
         self.writer.write((message + '\n').encode())
 
