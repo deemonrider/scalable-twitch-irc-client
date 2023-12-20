@@ -26,6 +26,7 @@ class ChatClient(ChatEventHandler):
         self.chat_client_id = chat_client_id
         self.running = True
         self.logger = logger
+        self.sent_msg_logger = logging.getLogger(f"sent-messages")
         self.bot_logger = logging.getLogger(f"bot-detection")
         self.oauth_password = oauth_password
         self.nickname = nickname
@@ -357,6 +358,7 @@ class ChatClient(ChatEventHandler):
     def send_msg(self, msg: str, channel_name: str):
         if len(msg) > TWITCH_CHAT_MSG_LENGTH_LIMIT:
             msg = msg[:TWITCH_CHAT_MSG_LENGTH_LIMIT-3] + "..."
+        self.sent_msg_logger.info(msg)
         self.send_raw(f"PRIVMSG #{channel_name} :{msg}")
 
     def broadcast(self, msg: str):
