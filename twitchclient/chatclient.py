@@ -15,6 +15,7 @@ DEFAULT_RECONNECT_TIMEOUT = 30
 
 class ChatModes:
     PUBLIC = "PUBLIC"
+    SLOW = "SLOW"
     FOLLOWER = "FOLLOWER"
     SUBSCRIBER = "SUBSCRIBER"
     EMOTE = "EMOTE"
@@ -199,10 +200,12 @@ class ChatClient(ChatEventHandler):
                     self.channels[channel_name]["chat_mode"] = ChatModes.SUBSCRIBER
                 elif tags.get('emote-only') == "1":
                     self.channels[channel_name]["chat_mode"] = ChatModes.EMOTE
-                elif tags.get('followers-only') == "-1":
-                    self.channels[channel_name]["chat_mode"] = ChatModes.PUBLIC
-                else:
+                elif int(tags.get('followers-only', -1)) >= 0: # -1 if not on
                     self.channels[channel_name]["chat_mode"] = ChatModes.FOLLOWER
+                elif int(tags.get('slow', 0)) > 0:  # 0 if not on
+                    self.channels[channel_name]["chat_mode"] = ChatModes.SLOW
+                else:
+                    self.channels[channel_name]["chat_mode"] = ChatModes.PUBLIC
             except KeyError:
                 pass
         elif cmd[1] == "CLEARCHAT":
