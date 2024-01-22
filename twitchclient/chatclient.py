@@ -28,7 +28,7 @@ class ChatClient(ChatEventHandler):
         self.running = True
         self.logger = logger
         self.sent_msg_logger = logging.getLogger(f"sent-messages")
-        self.bot_logger = logging.getLogger(f"bot-detection")
+        self.received_msg_logger = logging.getLogger(f"received-messages")
         self.oauth_password = oauth_password
         self.nickname = nickname
         self.twitch_id = twitch_id
@@ -243,7 +243,7 @@ class ChatClient(ChatEventHandler):
             self.users[chat_msg.user_id]['last_active'] = time.time()
             self.users[chat_msg.user_id]['sub'] = "subscriber" in tags.get("badges", "") or \
                                                   "founder" in tags.get("badges", "")
-
+            self.received_msg_logger.info(chat_msg)
             if self.users[chat_msg.user_id]['antiSpam'] < 5:
                 self.call_event_handler("chat_msg", chat_msg)
         elif cmd[1].isdigit():
@@ -257,6 +257,9 @@ class ChatClient(ChatEventHandler):
 
         while self.running:
             while self.running:
+                if self.reader is None:
+                    break
+
                 try:
                     data = await asyncio.wait_for(self.reader.readline(), timeout_duration)
                     if not data:  # Empty data means the connection was closed
@@ -281,7 +284,7 @@ class ChatClient(ChatEventHandler):
                     line, msg = msg.split('\n', 1)
                     await self._handle_msg(line.strip())
 
-            await asyncio.sleep(randint(5, 60))
+            await asyncio.sleep(randint(5, 30))
             self.logger.info(f"{self.chat_client_id}) Attempting to graceful restart due to connection loss.")
             await self.graceful_restart()
 
@@ -309,7 +312,7 @@ class ChatClient(ChatEventHandler):
         while self.pending_channels:
             channel_name, language = self.pending_channels.pop(0)
             self.add_channel(channel_name, language)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
 
     def add_channel(self, channel_name: str, language: str):
         if not self.writer:  # Check if connected
