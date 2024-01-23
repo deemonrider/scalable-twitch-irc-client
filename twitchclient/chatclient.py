@@ -264,7 +264,8 @@ class ChatClient(ChatEventHandler):
                     data = await asyncio.wait_for(self.reader.readline(), timeout_duration)
                     if not data:  # Empty data means the connection was closed
                         self.logger.warning(f"{self.chat_client_id}) Connection closed by the server.")
-                        break
+                        self.exit()
+                        return
                 except asyncio.TimeoutError:
                     self.logger.warning(
                         f"{self.chat_client_id}) Timeout: No data received in {timeout_duration} seconds.")
@@ -376,6 +377,7 @@ class ChatClient(ChatEventHandler):
 
     def exit(self):
         self.logger.info(f"{self.chat_client_id}) Exiting socket")
+        self.call_event_handler("notice", "shutdown-instance")
         self.running = False
         time.sleep(5)
 

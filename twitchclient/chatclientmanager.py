@@ -5,7 +5,7 @@ from twitchclient.chatclient import ChatClient
 
 
 class ChatClientManager:
-    def __init__(self, oauth_password: str, nickname: str, twitch_id, logger, max_cluster_size=25, max_viewer_per_cluster=250):
+    def __init__(self, oauth_password: str, nickname: str, twitch_id, logger, max_cluster_size=50, max_viewer_per_cluster=250):
         self.clients = []   # type: List[ChatClient]
         self.clients_created = 0
         self.lock = threading.Lock()
@@ -20,8 +20,9 @@ class ChatClientManager:
 
     def shutdown(self):
         for client in self.clients:
-            for channel_name in client.channel_names:
-                client.remove_channel(channel_name)
+            # removed so we reduce the messages sent to twitch
+            # for channel_name in client.channel_names:
+            #     client.remove_channel(channel_name)
             client.exit()
 
     def _create_client(self):
@@ -68,7 +69,7 @@ class ChatClientManager:
                 if removed:
                     self.channel_size_client_dict[client] -= self.channel_size_dict[channel_name]
                     self.channel_size_dict.pop(channel_name)
-                # todo: remove client if no channels are left in that cluster
+
                 if len(client.channel_names) == 0:
                     client.exit()
                     self.clients.remove(client)
