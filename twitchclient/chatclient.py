@@ -11,6 +11,15 @@ from twitchclient.chatmessage import ChatMessage
 
 TWITCH_CHAT_MSG_LENGTH_LIMIT = 500
 DEFAULT_RECONNECT_TIMEOUT = 30
+TRANSLATIONS_BOT_NOW_MOD = {
+    "en": "✅The bot is now moderator. Thank you!✅",
+    "de": "✅Der Bot ist jetzt Moderator. Danke!✅",
+    "es": "✅El bot es ahora moderador. ¡Gracias!✅",
+    "fr": "✅Le bot est maintenant modérateur. Merci!✅",
+    "it": "✅Il bot è ora moderatore. Grazie!✅",
+    "pt": "✅O bot é agora moderador. Obrigado!✅",
+    "ru": "✅Теперь бот является модератором. Спасибо!✅"
+}
 
 
 class ChatModes:
@@ -191,7 +200,18 @@ class ChatClient(ChatEventHandler):
 
         if cmd[1] == "JOIN":
             self.call_event_handler("join", channel_name, cmd[0].split("!")[0])
-        elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE" or cmd[1] == "USERSTATE":
+        elif cmd[1] == "USERSTATE":
+            moderator_status = tags.get('badges', '').find('moderator/1') != -1
+            if self.channels[channel_name]["is_mod"] is not None:
+                if self.channels[channel_name]["is_mod"] != moderator_status:
+                    if moderator_status:
+                        language = self.channels[channel_name]["language"]
+                        if language in TRANSLATIONS_BOT_NOW_MOD:
+                            self.send_msg(TRANSLATIONS_BOT_NOW_MOD[language], channel_name)
+                        else:
+                            self.send_msg(TRANSLATIONS_BOT_NOW_MOD["en"], channel_name)
+            self.channels[channel_name]["is_mod"] = moderator_status
+        elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE":
             pass
         elif cmd[1] == "NOTICE":
             self.call_event_handler("notice", content)
@@ -325,7 +345,7 @@ class ChatClient(ChatEventHandler):
             return
 
         self.channel_names.append(channel_name)
-        self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC, "language": language}
+        self.channels[channel_name] = {"chat_mode": ChatModes.PUBLIC, "language": language, "is_mod": None}
         self.logger.info(f"{self.chat_client_id}) Trying to join #{channel_name}")
         self.send_raw(f'JOIN #{channel_name}')
 
