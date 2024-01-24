@@ -40,6 +40,7 @@ class ChatClient(ChatEventHandler):
         self.chat_mode = ChatModes.PUBLIC  # todo: move the on notice to this module
         self.connection_retry_timeout = DEFAULT_RECONNECT_TIMEOUT  # in seconds
         self.pending_channels = []  # Queue to store pending channel join requests
+        self.server_closed_connection_amount = 0
 
         self.reader = None
         self.writer = None
@@ -263,9 +264,11 @@ class ChatClient(ChatEventHandler):
                 try:
                     data = await asyncio.wait_for(self.reader.readline(), timeout_duration)
                     if not data:  # Empty data means the connection was closed
+                        self.server_closed_connection_amount += 1
                         self.logger.warning(f"{self.chat_client_id}) Connection closed by the server.")
-                        self.exit()
-                        return
+                        if self.server_closed_connection_amount > 3:
+                            self.exit()
+                        break
                 except asyncio.TimeoutError:
                     self.logger.warning(
                         f"{self.chat_client_id}) Timeout: No data received in {timeout_duration} seconds.")
