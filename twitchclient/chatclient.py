@@ -210,6 +210,8 @@ class ChatClient(ChatEventHandler):
                             self.send_msg(TRANSLATIONS_BOT_NOW_MOD[language], channel_name)
                         else:
                             self.send_msg(TRANSLATIONS_BOT_NOW_MOD["en"], channel_name)
+                        self.call_event_handler("notice", "bot-now-mod")
+
             self.channels[channel_name]["is_mod"] = moderator_status
         elif cmd[1] == "CAP" or cmd[1] == "GLOBALUSERSTATE":
             pass
